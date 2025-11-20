@@ -78,7 +78,7 @@ func TestWaitGroupConcurrentDone(t *testing.T) {
 	var doneCount int32
 	var mu sync.Mutex
 
-	for i := 0; i < count; i++ {
+	for i := range count {
 		go func() {
 			time.Sleep(time.Duration(i%5) * time.Millisecond) // Introduce some variation
 			wg.Done()
@@ -130,6 +130,21 @@ func TestWaitGroupDoneOnEmptyGroupPanics(t *testing.T) {
 		}
 	}()
 	wg.Done() // This should panic (equivalent to Add(-1) when counter is 0)
+}
+
+func TestWaitGroupAddNegativePanic(t *testing.T) {
+	t.Parallel()
+	var wg chanwg.WaitGroup
+	defer func() {
+		r := recover()
+		if r == nil {
+			t.Error("Expected panic when Add(-x) brings counter beneath zero")
+		} else if msg := r.(string); msg != tooManyDoneCallsPanic {
+			t.Errorf("Unexpected panic message: %s, expected %s", msg, tooManyDoneCallsPanic)
+		}
+	}()
+	wg.Add(1)
+	wg.Add(-2)
 }
 
 func TestWaitGroupWaitWithoutWork(t *testing.T) {
@@ -292,4 +307,58 @@ func TestWaitGroupGoAllStart(t *testing.T) {
 	case <-time.After(100 * time.Millisecond):
 		t.Fatal("wg was not closed")
 	}
+}
+
+func TestWaitGroupRace(t *testing.T) {
+	t.Parallel()
+	timeout := time.After(100 * time.Millisecond)
+
+	for i := 0; i < 1000; i++ {
+		var wg chanwg.WaitGroup
+		var counter atomic.Int32
+		wg.Add(1)
+		wg.Go(func() {
+			counter.Add(1)
+		})
+		wg.Go(func() {
+			counter.Add(1)
+		})
+
+		wg.Done()
+		select {
+		case <-wg.WaitChan():
+		case <-timeout:
+			t.Fatal("wg was not closed, is it late?")
+		}
+		if counter.Load() != 2 {
+			t.Fatal("WaitChan closed before all goroutines completed")
+		}
+	}
+}
+
+func BenchmarkChannelWaitGroup(b *testing.B) {
+	b.ReportAllocs()
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			var wg chanwg.WaitGroup
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+			}()
+			<-wg.WaitChan()
+		}
+	})
+}
+func BenchmarkSyncWaitGroup(b *testing.B) {
+	b.ReportAllocs()
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			var wg sync.WaitGroup
+			wg.Add(1)
+			go func() {
+				wg.Done()
+			}()
+			wg.Wait()
+		}
+	})
 }
