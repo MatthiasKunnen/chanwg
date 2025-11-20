@@ -4,14 +4,18 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/MatthiasKunnen/chanwg"
 	"time"
+
+	"github.com/MatthiasKunnen/chanwg"
 )
 
 // This example shows how to await the WaitGroup and another channel simultaneously.
 func ExampleWaitGroup_basic() {
 	var wg chanwg.WaitGroup
-	wg.Add(1)
+	wg.Go(func() {
+		// Long-running operation
+		select {}
+	})
 
 	select {
 	case <-wg.WaitChan():
@@ -35,12 +39,9 @@ func NewFoo() *Foo {
 }
 
 func (f *Foo) Start(ctx context.Context) error {
-	f.startedWg.Add(1)
-
-	go func() {
+	f.startedWg.Go(func() {
 		time.Sleep(200 * time.Millisecond)
-		defer f.startedWg.Done()
-	}()
+	})
 
 	select {
 	case <-f.started:

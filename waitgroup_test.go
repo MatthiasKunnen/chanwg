@@ -1,10 +1,12 @@
 package chanwg_test
 
 import (
-	"github.com/MatthiasKunnen/chanwg"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/MatthiasKunnen/chanwg"
 )
 
 const tooManyDoneCallsPanic = "chanwg: negative WaitGroup counter, too many Done calls"
@@ -231,6 +233,62 @@ func TestWaitGroupWaitChanNestedGoroutines(t *testing.T) {
 	select {
 	case <-wg.WaitChan():
 		// Expected
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("wg was not closed")
+	}
+}
+
+func TestWaitGroupGo(t *testing.T) {
+	t.Parallel()
+
+	var wg chanwg.WaitGroup
+	wg.Go(func() {
+		wg.Go(func() {
+		})
+		wg.Go(func() {
+			wg.Go(func() {
+			})
+		})
+	})
+	wg.Go(func() {
+	})
+
+	select {
+	case <-wg.WaitChan():
+		// Expected
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("wg was not closed")
+	}
+}
+
+func TestWaitGroupGoAllStart(t *testing.T) {
+	t.Parallel()
+	var counter atomic.Int32
+
+	var wg chanwg.WaitGroup
+	wg.Go(func() {
+		counter.Add(1)
+		wg.Go(func() {
+			counter.Add(1)
+		})
+		wg.Go(func() {
+			counter.Add(1)
+			wg.Go(func() {
+				counter.Add(1)
+			})
+		})
+	})
+	wg.Add(1)
+	go func() {
+		counter.Add(1)
+		defer wg.Done()
+	}()
+
+	select {
+	case <-wg.WaitChan():
+		if counter.Load() != 5 {
+			t.Errorf("Not all goroutines started, expected 5, got %d", counter.Load())
+		}
 	case <-time.After(100 * time.Millisecond):
 		t.Fatal("wg was not closed")
 	}

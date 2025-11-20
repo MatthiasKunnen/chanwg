@@ -45,7 +45,10 @@ import (
 
 func main()  {
 	var wg chanwg.WaitGroup
-	wg.Add(1)
+	wg.Go(func() {
+        // Long-running operation
+        select {}
+    })
 
 	select {
 	case <-wg.WaitChan():
@@ -59,8 +62,8 @@ func main()  {
 ### `chanwg.WaitGroup` is single use
 Instead of reusing it after completion, create a new one.
 
-### `chanwg.WaitGroup` will never complete until at least one `Add` and `Done` is performed
-This is done to allow this:
+### `chanwg.WaitGroup` will never complete until at least one `Go()` or `Add() + Done()` is performed
+This is done to allow access to the channel before adding work:
 ```go
 type Foo struct {
 	startedWg chanwg.WaitGroup
