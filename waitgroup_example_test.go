@@ -2,7 +2,6 @@ package chanwg_test
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"time"
 
@@ -11,80 +10,44 @@ import (
 
 // This example shows how to await the WaitGroup and another channel simultaneously.
 func ExampleWaitGroup_basic() {
+	ctx, cancelFunc := context.WithTimeout(context.Background(), 10*time.Millisecond)
+	defer cancelFunc()
+
 	var wg chanwg.WaitGroup
 	wg.Go(func() {
-		// Long-running operation
-		select {}
+		select {} // Wait forever
 	})
+	wg.Ready()
 
 	select {
 	case <-wg.WaitChan():
-	case <-time.After(time.Millisecond):
+	case <-ctx.Done():
 		fmt.Println("Abort start")
 	}
 
 	// Output: Abort start
 }
 
-type Foo struct {
-	startedWg chanwg.WaitGroup
-	started   <-chan struct{}
-}
+// The WaitChan can be received from even before adding tasks.
+// It won't complete before Ready and the tasks being done.
+func ExampleWaitGroup_useWaitChanBeforeAddingTasks() {
+	var wg chanwg.WaitGroup
 
-func NewFoo() *Foo {
-	foo := &Foo{}
-	foo.started = foo.startedWg.WaitChan()
-
-	return foo
-}
-
-func (f *Foo) Start(ctx context.Context) error {
-	f.startedWg.Go(func() {
-		time.Sleep(200 * time.Millisecond)
-	})
+	go func() {
+		// Time this function after the WaitChan receive
+		time.Sleep(10 * time.Millisecond)
+		wg.Go(func() {
+			// Do work
+		})
+		wg.Ready()
+	}()
 
 	select {
-	case <-f.started:
-		return nil
-	case <-ctx.Done():
-		return ctx.Err()
-	}
-}
-
-// Showcases how to use a [context.Context] to cancel a [chanwg.WaitGroup].
-// In this example, the WaitGroup completes before the deadline.
-func ExampleWaitGroup_struct_context_in_time() {
-	ctx, cancelFunc := context.WithTimeout(context.Background(), 500*time.Millisecond)
-	defer cancelFunc()
-	err := NewFoo().Start(ctx)
-	if errors.Is(err, context.DeadlineExceeded) {
-		fmt.Println("Failed to start, too slow")
-		return
-	} else if err != nil {
-		fmt.Printf("Failed to start: %s\n", err)
-		return
+	case <-wg.WaitChan():
+		fmt.Println("Done")
+	case <-time.After(50 * time.Millisecond):
+		fmt.Println("WaitChan did not complete as expected")
 	}
 
-	fmt.Println("Started in time")
-
-	// Output: Started in time
-}
-
-// Showcases how to use a [context.Context] to cancel a [chanwg.WaitGroup].
-// In this example, the context is canceled before the WaitGroup completes.
-func ExampleWaitGroup_struct_context_canceled() {
-	ctx, cancelFunc := context.WithTimeout(context.Background(), 10*time.Millisecond)
-	defer cancelFunc()
-	err := NewFoo().Start(ctx)
-	if errors.Is(err, context.DeadlineExceeded) {
-		fmt.Println("Failed to start, too slow")
-		return
-	} else if err != nil {
-		fmt.Printf("Failed to start: %s\n", err)
-		return
-	}
-
-	fmt.Println("Started in time")
-
-	// Output: Failed to start, too slow
+	// Output: Done
 }
