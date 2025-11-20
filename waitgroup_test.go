@@ -28,13 +28,22 @@ func TestWaitGroupBasic(t *testing.T) {
 
 	select {
 	case <-wg.WaitChan():
+		t.Fatal("WaitChan should not be closed before Ready")
+	case <-time.After(100 * time.Millisecond):
+		// Expected, give goroutine some time to potentially complete if there was a bug
+	}
+
+	wg.Ready()
+
+	select {
+	case <-wg.WaitChan():
 		// Expected
 	case <-time.After(100 * time.Millisecond):
 		t.Fatal("WaitChan was not closed after Done was called")
 	}
 }
 
-func TestWaitGroupMultipleAdds(t *testing.T) {
+func TestWaitGroupReadyBeforeDone(t *testing.T) {
 	t.Parallel()
 	var wg chanwg.WaitGroup
 	wg.Add(3)
@@ -45,6 +54,8 @@ func TestWaitGroupMultipleAdds(t *testing.T) {
 	go func() {
 		wg.Done()
 	}()
+
+	wg.Ready()
 
 	select {
 	case <-wg.WaitChan():
@@ -63,11 +74,43 @@ func TestWaitGroupMultipleAdds(t *testing.T) {
 	}
 }
 
+func TestWaitGroupReadyAfterDone(t *testing.T) {
+	t.Parallel()
+	var wg chanwg.WaitGroup
+	wg.Add(3)
+
+	go func() {
+		wg.Done()
+	}()
+	go func() {
+		wg.Done()
+	}()
+
+	wg.Done() // This should make the counter zero
+
+	select {
+	case <-wg.WaitChan():
+		t.Fatal("WaitChan should not be closed yet with 1 pending")
+	case <-time.After(100 * time.Millisecond):
+		// Expected
+	}
+
+	wg.Ready()
+
+	select {
+	case <-wg.WaitChan():
+		// Expected
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("WaitChan was not closed after all Dones were called")
+	}
+}
+
 func TestWaitGroupConcurrentDone(t *testing.T) {
 	t.Parallel()
 	var wg chanwg.WaitGroup
 	count := 100
 	wg.Add(count)
+	wg.Ready()
 
 	var doneCount int32
 	var mu sync.Mutex
@@ -75,10 +118,10 @@ func TestWaitGroupConcurrentDone(t *testing.T) {
 	for i := range count {
 		go func() {
 			time.Sleep(time.Duration(i%5) * time.Millisecond) // Introduce some variation
-			wg.Done()
 			mu.Lock()
 			doneCount++
 			mu.Unlock()
+			wg.Done()
 		}()
 	}
 
@@ -100,6 +143,7 @@ func TestWaitGroupMoreDoneThanAdd(t *testing.T) {
 	t.Parallel()
 	var wg chanwg.WaitGroup
 	wg.Add(1)
+	wg.Ready()
 	wg.Done()
 	defer func() {
 		r := recover()
@@ -141,7 +185,7 @@ func TestWaitGroupAddNegativePanic(t *testing.T) {
 	wg.Add(-2)
 }
 
-func TestWaitGroupWaitWithoutWork(t *testing.T) {
+func TestWaitGroupWaitWithoutReady(t *testing.T) {
 	t.Parallel()
 	var wg chanwg.WaitGroup
 
@@ -153,10 +197,23 @@ func TestWaitGroupWaitWithoutWork(t *testing.T) {
 	}
 }
 
+func TestWaitGroupReadyNoWork(t *testing.T) {
+	t.Parallel()
+	var wg chanwg.WaitGroup
+
+	wg.Ready()
+
+	select {
+	case <-wg.WaitChan():
+		// Expected
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("Wait did not complete despite ready and not work")
+	}
+}
+
 func TestWaitGroupZeroAddNoCompletion(t *testing.T) {
 	t.Parallel()
 	var wg chanwg.WaitGroup
-	// Adding 0 should not close the channel, as the requirement is "at least one Add and corresponding Done"
 	wg.Add(0)
 
 	select {
@@ -172,6 +229,7 @@ func TestWaitGroupReuseAfterCompletion(t *testing.T) {
 	var wg chanwg.WaitGroup
 	wg.Add(1)
 	wg.Done()
+	wg.Ready()
 
 	select {
 	case <-wg.WaitChan():
@@ -196,6 +254,7 @@ func TestWaitGroupWaitChanMultipleCalls(t *testing.T) {
 	t.Parallel()
 	var wg chanwg.WaitGroup
 	wg.Add(1)
+	wg.Ready()
 
 	ch1 := wg.WaitChan()
 	ch2 := wg.WaitChan()
@@ -230,6 +289,7 @@ func TestWaitGroupWaitChanNestedGoroutines(t *testing.T) {
 	t.Parallel()
 	var wg chanwg.WaitGroup
 	wg.Add(1)
+	wg.Ready()
 	go func() {
 		defer wg.Done()
 
@@ -261,6 +321,7 @@ func TestWaitGroupGo(t *testing.T) {
 	})
 	wg.Go(func() {
 	})
+	wg.Ready()
 
 	select {
 	case <-wg.WaitChan():
@@ -292,6 +353,7 @@ func TestWaitGroupGoAllStart(t *testing.T) {
 		counter.Add(1)
 		defer wg.Done()
 	}()
+	wg.Ready()
 
 	select {
 	case <-wg.WaitChan():
@@ -310,7 +372,6 @@ func TestWaitGroupRace(t *testing.T) {
 	for i := 0; i < 1000; i++ {
 		var wg chanwg.WaitGroup
 		var counter atomic.Int32
-		wg.Add(1)
 		wg.Go(func() {
 			counter.Add(1)
 		})
@@ -318,7 +379,7 @@ func TestWaitGroupRace(t *testing.T) {
 			counter.Add(1)
 		})
 
-		wg.Done()
+		wg.Ready()
 		select {
 		case <-wg.WaitChan():
 		case <-timeout:
@@ -339,6 +400,7 @@ func BenchmarkChannelWaitGroup(b *testing.B) {
 			go func() {
 				defer wg.Done()
 			}()
+			wg.Ready()
 			<-wg.WaitChan()
 		}
 	})

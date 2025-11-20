@@ -8,7 +8,7 @@ The Go `chanwg` project contains a channel-based, cancelable, alternative to
 When waiting for a `sync.WaitGroup` with `wg.Wait()`, the goroutine that does the waiting will block
 indefinitely until the `WaitGroup` completes. There is no way to cancel the waiting.
 
-Using a separate goroutine to wait, leaks a goroutine:
+Using a separate goroutine to wait, leaks a goroutine and complicates the code:
 
 ```go
 import (
@@ -35,7 +35,7 @@ func main() {
 }
 ```
 
-Using `chanwg`'s WaitGroup, this can be achieved without leaking any goroutines as follows:
+Using `chanwg`'s WaitGroup, this can be achieved without as follows:
 
 ```go
 import (
@@ -44,16 +44,20 @@ import (
 )
 
 func main()  {
-	var wg chanwg.WaitGroup
-	wg.Go(func() {
-        // Long-running operation
-        select {}
-    })
+    ctx, cancelFunc := context.WithTimeout(context.Background(), 10*time.Millisecond)
+    defer cancelFunc()
 
-	select {
-	case <-wg.WaitChan():
-	case <-time.After(time.Second):
-	}
+    var wg chanwg.WaitGroup
+    wg.Go(func() {
+        // Long-running task
+    })
+    wg.Ready()
+
+    select {
+    case <-wg.WaitChan():
+    case <-ctx.Done():
+        fmt.Println("Abort")
+    }
 }
 ```
 
@@ -62,29 +66,5 @@ func main()  {
 ### `chanwg.WaitGroup` is single use
 Instead of reusing it after completion, create a new one.
 
-### `chanwg.WaitGroup` will never complete until at least one `Go()` or `Add() + Done()` is performed
-This is done to allow access to the channel before adding work:
-```go
-type Foo struct {
-	startedWg chanwg.WaitGroup
-	started <-chan struct{}
-}
-
-func NewFoo() *Foo {
-	foo := &Foo{}
-	foo.started = foo.startedWg.WaitChan()
-
-	return foo
-}
-
-func (f *Foo) Start(ctx context.Context) error {
-	f.startedWg.Add(1)
-
-	select {
-	case <-f.started:
-		return nil
-	case <-ctx.Done():
-        return ctx.Err()
-	}
-}
-```
+### `chanwg.WaitGroup` will never complete until `Ready` is called
+This allows receiving from the wait channel before adding the work.

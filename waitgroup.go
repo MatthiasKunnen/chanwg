@@ -4,27 +4,33 @@ import "sync"
 
 // WaitGroup is a single-use synchronization primitive similar to [sync.WaitGroup].
 //
-// Instead of a blocking Wait method, it exposes a channel that closes when all tracked
-// operations have completed.
-//
-// Waiting for a [sync.WaitGroup] that never completes blocks the goroutine indefinitely.
-// [chanwg.WaitGroup], on the other hand, allows abandoning a wait.
-//
-// WaitGroup requires at least one call to Go (or Add and corresponding Done) before completing.
-// This allows you to extract the channel before calling Add or Go.
+// [sync.WaitGroup] exposes a blocking [sync.WaitGroup.Wait] method which cannot be abandoned
+// without leaking a goroutine.
+// [chanwg.WaitGroup], on the other hand, facilitates waiting using a channel which can be abandoned.
 type WaitGroup struct {
 	counter int
-	closed  bool
+	state   state
 	mu      sync.Mutex
 	done    chan struct{}
 }
 
-// Add increments the counter by the given positive delta.
-// Add must be called before the corresponding operations begin execution.
+type state int
+
+const (
+	stateInitial state = iota
+	stateReadyForWait
+	stateClosed
+)
+
+// Add adds delta, which may be negative, to the [WaitGroup] task counter.
+// If the counter becomes zero, and Ready has been called, WaitChan closes.
+// If the counter goes negative, Add panics.
 //
 // Callers should prefer [WaitGroup.Go].
 //
-// Add may happen while the task counter has never reached zero after the initial state.
+// Add may happen before Ready or while the counter is not zero.
+// Typically, Add is executed before the statement creating the goroutine or other event to be
+// waited for.
 // Typically, Add is executed before the statement creating the goroutine or other event to be
 // waited for.
 func (cwg *WaitGroup) Add(delta int) {
@@ -34,7 +40,7 @@ func (cwg *WaitGroup) Add(delta int) {
 
 	cwg.mu.Lock()
 	defer cwg.mu.Unlock()
-	if cwg.closed {
+	if cwg.state == stateClosed {
 		panic("chanwg: WaitGroup already closed")
 	}
 
@@ -44,9 +50,11 @@ func (cwg *WaitGroup) Add(delta int) {
 	case cwg.counter < 0:
 		panic("chanwg: negative WaitGroup counter, too many Done calls")
 	case cwg.counter == 0:
-		cwg.closed = true
-		if cwg.done != nil {
-			close(cwg.done)
+		if cwg.state == stateReadyForWait {
+			cwg.state = stateClosed
+			if cwg.done != nil {
+				close(cwg.done)
+			}
 		}
 	}
 }
@@ -56,7 +64,7 @@ func (cwg *WaitGroup) Add(delta int) {
 //
 // Callers should prefer [WaitGroup.Go].
 //
-// When the counter reaches zero has been called, WaitChan is closed.
+// When the counter reaches zero and Ready has been called, WaitChan is closed.
 //
 // Panics if:
 //   - Done is called more times than Add
@@ -65,13 +73,16 @@ func (cwg *WaitGroup) Done() {
 	cwg.Add(-1)
 }
 
-// WaitChan returns a channel that will be closed when all tracked operations are complete.
+// WaitChan returns a channel that will be closed when all tasks have completed and Ready
+// has been called.
+// The channel can be received from before any tasks have been added.
+// It will always return the same channel.
 func (cwg *WaitGroup) WaitChan() <-chan struct{} {
 	cwg.mu.Lock()
 	defer cwg.mu.Unlock()
 	if cwg.done == nil {
 		cwg.done = make(chan struct{})
-		if cwg.closed {
+		if cwg.state == stateClosed {
 			close(cwg.done)
 		}
 	}
@@ -79,12 +90,31 @@ func (cwg *WaitGroup) WaitChan() <-chan struct{} {
 	return cwg.done
 }
 
+// Ready causes the WaitChan to close when all tasks complete.
+// It is typically called after all tasks are added.
+// Ready may be called multiple times safely.
+func (cwg *WaitGroup) Ready() {
+	cwg.mu.Lock()
+	defer cwg.mu.Unlock()
+	if cwg.state != stateInitial {
+		return
+	}
+	if cwg.counter == 0 {
+		cwg.state = stateClosed
+		if cwg.done != nil {
+			close(cwg.done)
+		}
+	} else {
+		cwg.state = stateReadyForWait
+	}
+}
+
 // Go calls f in a new goroutine and adds that task to the WaitGroup.
 // When f returns, the task is removed from the WaitGroup.
 //
 // The function f must not panic.
 //
-// Go may happen while the WaitGroup has not become empty.
+// Go may happen before Ready or while the WaitGroup is not empty.
 // This means a goroutine started by Go may itself call Go.
 func (cwg *WaitGroup) Go(f func()) {
 	cwg.Add(1)
