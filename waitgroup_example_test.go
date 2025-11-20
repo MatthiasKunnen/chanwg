@@ -8,6 +8,7 @@ import (
 	"time"
 )
 
+// This example shows how to await the WaitGroup and another channel simultaneously.
 func ExampleWaitGroup_basic() {
 	var wg chanwg.WaitGroup
 	wg.Add(1)

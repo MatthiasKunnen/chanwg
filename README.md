@@ -68,8 +68,7 @@ type Foo struct {
 }
 
 func NewFoo() *Foo {
-	foo := &Foo{
-	}
+	foo := &Foo{}
 	foo.started = foo.startedWg.WaitChan()
 
 	return foo
