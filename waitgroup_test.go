@@ -17,14 +17,8 @@ func TestWaitGroupBasic(t *testing.T) {
 	var wg chanwg.WaitGroup
 	wg.Add(1)
 
-	done := make(chan struct{})
-	go func() {
-		<-wg.WaitChan()
-		close(done)
-	}()
-
 	select {
-	case <-done:
+	case <-wg.WaitChan():
 		t.Fatal("WaitChan should not be closed yet")
 	case <-time.After(100 * time.Millisecond):
 		// Expected, give goroutine some time to potentially complete if there was a bug
@@ -33,7 +27,7 @@ func TestWaitGroupBasic(t *testing.T) {
 	wg.Done()
 
 	select {
-	case <-done:
+	case <-wg.WaitChan():
 		// Expected
 	case <-time.After(100 * time.Millisecond):
 		t.Fatal("WaitChan was not closed after Done was called")
