@@ -49,15 +49,6 @@ func (f *Foo) Start(ctx context.Context) error {
 	}
 }
 
-func (f *Foo) IsStarted() bool {
-	select {
-	case <-f.started:
-		return true
-	default:
-		return false
-	}
-}
-
 // Showcases how to use a [context.Context] to cancel a [chanwg.WaitGroup].
 // In this example, the WaitGroup completes before the deadline.
 func ExampleWaitGroup_struct_context_in_time() {

@@ -85,13 +85,4 @@ func (f *Foo) Start(ctx context.Context) error {
         return ctx.Err()
 	}
 }
-
-func (f *Foo) IsStarted() bool {
-	select {
-	case <-f.started:
-		return true
-	default:
-		return false
-	}
-}
 ```
