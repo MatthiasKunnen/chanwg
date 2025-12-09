@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/MatthiasKunnen/chanwg"
+	"github.com/MatthiasKunnen/chanwg/v2"
 )
 
 // This example shows how to await the WaitGroup and another channel simultaneously.

@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/MatthiasKunnen/chanwg"
+	"github.com/MatthiasKunnen/chanwg/v2"
 )
 
 const tooManyDoneCallsPanic = "chanwg: negative WaitGroup counter, too many Done calls"

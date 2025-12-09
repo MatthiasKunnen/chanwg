@@ -5,9 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-
 ## Unreleased
-See <https://github.com/MatthiasKunnen/chanwg/compare/v1.1.0...master>.
+See <https://github.com/MatthiasKunnen/chanwg/compare/v2.0.0...master>.
+
+## [2.0.0](https://github.com/MatthiasKunnen/chanwg/compare/v1.1.0...v2.0.0) - 2025-12-09
+
+### <!-- 0 -->Features
+- **BREAKING:** Do not close WaitChan before Ready
+  (<https://github.com/MatthiasKunnen/chanwg/commit/a9bbe630a1be3c0d4e3cd682b369bd9f60718612>)  
+  A call to Ready() is now required to make WaitChan
+  complete.
+
+### <!-- 7 -->Miscellaneous Tasks
+- Add changelog generator
+  (<https://github.com/MatthiasKunnen/chanwg/commit/1e497c88fe7d50406cf4bfc525967cc438820bfe>)
 
 ## [1.1.0](https://github.com/MatthiasKunnen/chanwg/compare/v1.0.0...v1.1.0) - 2025-11-20
 

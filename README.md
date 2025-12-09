@@ -1,4 +1,4 @@
-[![Go Reference](https://pkg.go.dev/badge/github.com/MatthiasKunnen/chanwg.svg)](https://pkg.go.dev/github.com/MatthiasKunnen/chanwg)
+[![Go Reference](https://pkg.go.dev/badge/github.com/MatthiasKunnen/chanwg/v2.svg)](https://pkg.go.dev/github.com/MatthiasKunnen/chanwg/v2)
 
 # chanwg
 The Go `chanwg` project contains a channel-based, cancelable, alternative to
@@ -39,7 +39,7 @@ Using `chanwg`'s WaitGroup, this can be achieved as follows:
 
 ```go
 import (
-	"github.com/MatthiasKunnen/chanwg"
+	"github.com/MatthiasKunnen/chanwg/v2"
 	"time"
 )
 
